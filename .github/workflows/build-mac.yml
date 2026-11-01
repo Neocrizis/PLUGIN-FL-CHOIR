@@ -50,5 +50,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Exemple-audio
-          path: gloria.wav
+          path: choeur.wav
           if-no-files-found: warn

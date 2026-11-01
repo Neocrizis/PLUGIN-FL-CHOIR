@@ -2,7 +2,7 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
-#include "ChoirEngine.h"
+#include "VoiceChoir.h"
 
 class ChoraleProcessor : public juce::AudioProcessor
 {
@@ -19,7 +19,7 @@ public:
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Chorale"; }
-    bool acceptsMidi() const override { return true; }
+    bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 8.0; }
@@ -33,23 +33,15 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    juce::String getLyrics() const;
-    void setLyrics (const juce::String& text);
-    void requestLyricsRestart() { restartLyrics.store (true); }
-    int getLyricsPosition() const { return engine.getLyricsPosition(); }
+    float getDetectedMidi() const { return engine.getDetectedMidi(); }
 
     juce::AudioProcessorValueTreeState apvts;
 
 private:
     choir::Params readParams() const;
-    void handleMidi (const juce::MidiMessage& message);
-    void handleTransport();
 
-    choir::ChoirEngine engine;
-    std::atomic<bool> restartLyrics { false };
+    choir::VoiceChoir engine;
     int currentProgram = 0;
-    bool wasPlaying = false;
-    double lastPpq = 0.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChoraleProcessor)
 };

@@ -1,14 +1,17 @@
-// Test du moteur sans JUCE : verifie les paroles et le signal, puis ecrit des WAV d'ecoute.
-#include "../Source/ChoirEngine.h"
+// Test du moteur sans JUCE : envoie une voix de synthese dans le choeur, verifie le resultat
+// et ecrit des WAV d'ecoute.
+#include "../Source/VoiceChoir.h"
 
 #include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <memory>
+#include <string>
 
 using namespace choir;
 
 static int failures = 0;
+static const double kSr = 48000.0;
 
 static void check (bool ok, const std::string& name, const std::string& detail = "")
 {
@@ -17,39 +20,113 @@ static void check (bool ok, const std::string& name, const std::string& detail =
         ++failures;
 }
 
-static std::string join (const std::vector<Syllable>& v)
+// Voix simple : dent de scie filtree, avec une enveloppe de syllabes optionnelle.
+static std::vector<float> makeVoice (float hz, double seconds, bool syllables)
 {
-    std::string s;
-    for (const auto& x : v)
-        s += (s.empty() ? "" : "|") + std::string (x.text);
+    std::vector<float> s ((size_t) (seconds * kSr));
+    float phase = 0, lp = 0;
+    for (size_t i = 0; i < s.size(); ++i)
+    {
+        phase += hz / (float) kSr;
+        if (phase >= 1.0f) phase -= 1.0f;
+        const float saw = 2.0f * phase - 1.0f;
+        lp += 0.25f * (saw - lp);
+        float env = 0.3f;
+        if (syllables)
+        {
+            const double t = (double) i / kSr;
+            env *= std::fmod (t, 0.5) < 0.3 ? 1.0f : 0.0f;
+        }
+        s[i] = lp * env;
+    }
     return s;
 }
 
-struct Event { double time; int note; bool on; };
-
-static std::vector<float> renderEvents (ChoirEngine& e, const std::vector<Event>& events, double seconds, double sr)
+static std::vector<float> run (VoiceChoir& e, const std::vector<float>& in)
 {
-    const int total = (int) (seconds * sr);
-    std::vector<float> out ((size_t) total * 2);
+    std::vector<float> out (in.size() * 2);
     std::vector<float> l (256), r (256);
-    size_t next = 0;
-    for (int pos = 0; pos < total; pos += 256)
+    for (size_t pos = 0; pos < in.size(); pos += 256)
     {
-        const int n = std::min (256, total - pos);
-        while (next < events.size() && events[next].time * sr <= pos)
-        {
-            if (events[next].on) e.noteOn (events[next].note, 0.8f);
-            else e.noteOff (events[next].note);
-            ++next;
-        }
-        e.render (l.data(), r.data(), n);
+        const int n = (int) std::min<size_t> (256, in.size() - pos);
+        e.process (in.data() + pos, in.data() + pos, l.data(), r.data(), n);
         for (int i = 0; i < n; ++i)
         {
-            out[(size_t) (pos + i) * 2] = l[(size_t) i];
-            out[(size_t) (pos + i) * 2 + 1] = r[(size_t) i];
+            out[(pos + (size_t) i) * 2] = l[(size_t) i];
+            out[(pos + (size_t) i) * 2 + 1] = r[(size_t) i];
         }
     }
     return out;
+}
+
+static std::unique_ptr<VoiceChoir> makeEngine (const Params& p)
+{
+    auto e = std::make_unique<VoiceChoir>();
+    e->setParams (p);
+    e->prepare (kSr);
+    return e;
+}
+
+static Params soloSection (int section)
+{
+    Params p;
+    p.harmony = Harmony::chord;
+    p.sectionLevel = { 0, 0, 0, 0 };
+    p.sectionLevel[(size_t) section] = 1.0f;
+    p.singers = 1;
+    p.ensemble = 0;
+    p.character = 0;
+    p.dryLevel = 0;
+    p.reverbMix = 0;
+    return p;
+}
+
+static float detectHz (const std::vector<float>& s, size_t from, size_t count)
+{
+    float best = 0, bestLag = 1;
+    std::vector<float> c ((size_t) (kSr / 50) + 2);
+    for (int lag = 48; lag < (int) (kSr / 50); ++lag)
+    {
+        float sum = 0;
+        for (size_t i = 0; i < count; ++i)
+            sum += s[(from + i) * 2] * s[(from + i + (size_t) lag) * 2];
+        c[(size_t) lag] = sum;
+        best = std::max (best, sum);
+    }
+    // Premier maximum proche du meilleur, pour eviter les multiples de la periode.
+    for (int lag = 49; lag < (int) (kSr / 50) - 1; ++lag)
+    {
+        if (c[(size_t) lag] > 0.9f * best && c[(size_t) lag] >= c[(size_t) lag - 1] && c[(size_t) lag] >= c[(size_t) lag + 1])
+        {
+            bestLag = (float) lag;
+            break;
+        }
+    }
+    return (float) kSr / bestLag;
+}
+
+static float rms (const std::vector<float>& s, size_t fromFrame, size_t toFrame)
+{
+    double sum = 0;
+    for (size_t i = fromFrame * 2; i < toFrame * 2; ++i)
+        sum += s[i] * s[i];
+    return (float) std::sqrt (sum / (double) std::max<size_t> (1, (toFrame - fromFrame) * 2));
+}
+
+static bool allFinite (const std::vector<float>& s)
+{
+    for (float x : s)
+        if (! std::isfinite (x))
+            return false;
+    return true;
+}
+
+static float peak (const std::vector<float>& s)
+{
+    float p = 0;
+    for (float x : s)
+        p = std::max (p, std::abs (x));
+    return p;
 }
 
 static void writeWav (const std::string& path, const std::vector<float>& s, int sr)
@@ -67,199 +144,121 @@ static void writeWav (const std::string& path, const std::vector<float>& s, int 
     }
 }
 
-static float peak (const std::vector<float>& s, size_t from, size_t to)
+static void checkPitch (const char* name, int section, Harmony harmony, float expected)
 {
-    float p = 0;
-    for (size_t i = from; i < to && i < s.size(); ++i)
-        p = std::max (p, std::abs (s[i]));
-    return p;
-}
-
-static float rms (const std::vector<float>& s, size_t from, size_t to)
-{
-    double sum = 0;
-    for (size_t i = from; i < to; ++i)
-        sum += s[i] * s[i];
-    return (float) std::sqrt (sum / (double) std::max<size_t> (1, to - from));
-}
-
-static bool allFinite (const std::vector<float>& s)
-{
-    for (float x : s)
-        if (! std::isfinite (x))
-            return false;
-    return true;
-}
-
-// Frequence dominante par autocorrelation sur le canal gauche.
-static float detectPitch (const std::vector<float>& s, size_t from, size_t count, float sr)
-{
-    float best = 0, bestLag = 1;
-    for (int lag = (int) (sr / 1000); lag < (int) (sr / 60); ++lag)
-    {
-        float c = 0;
-        for (size_t i = 0; i < count; ++i)
-            c += s[(from + i) * 2] * s[(from + i + (size_t) lag) * 2];
-        if (c > best) { best = c; bestLag = (float) lag; }
-    }
-    return sr / bestLag;
-}
-
-// Part d'energie au-dessus de 1200 Hz, mesuree par difference avec un passe-bas.
-static float highRatio (const std::vector<float>& s, size_t from, size_t to, float sr)
-{
-    const float a = 1.0f - std::exp (-2.0f * kPi * 1200.0f / sr);
-    float lp = 0;
-    double hi = 0, all = 0;
-    for (size_t i = from; i < to; ++i)
-    {
-        lp += a * (s[i * 2] - lp);
-        const float h = s[i * 2] - lp;
-        hi += h * h;
-        all += s[i * 2] * s[i * 2];
-    }
-    return (float) (hi / std::max (1.0e-12, all));
+    auto p = soloSection (section);
+    p.harmony = harmony;
+    p.key = 0;
+    p.scale = Scale::major;
+    auto e = makeEngine (p);
+    const auto out = run (*e, makeVoice (220.0f, 1.5, false));
+    const float hz = detectHz (out, 48000, 4096);
+    check (std::abs (hz / expected - 1.0f) < 0.03f, name, std::to_string (hz) + " Hz, attendu " + std::to_string (expected));
 }
 
 int main (int argc, char** argv)
 {
     const std::string outDir = argc > 1 ? argv[1] : ".";
-    const double sr = 48000.0;
 
-    // --- Decoupage des paroles
-    check (join (parseLyrics ("Glo-ri-a")) == "glo|ri|a", "tirets", join (parseLyrics ("Glo-ri-a")));
-    check (join (parseLyrics ("Gloria")) == "glo|ri|a", "decoupage auto", join (parseLyrics ("Gloria")));
-    check (join (parseLyrics ("Amen")) == "a|men", "coda", join (parseLyrics ("Amen")));
-    check (join (parseLyrics ("excelsis")) == "ex|cel|sis", "VCCV", join (parseLyrics ("excelsis")));
-    check (join (parseLyrics ("\xC3\xA9t\xC3\xA9 chanson")) == "e|te|chan|son", "accents et ch", join (parseLyrics ("\xC3\xA9t\xC3\xA9 chanson")));
-    check (join (parseLyrics ("l'amour, toujours!")) == "l|a|mour|tou|jours" || join (parseLyrics ("l'amour, toujours!")) == "a|mour|tou|jours",
-           "ponctuation", join (parseLyrics ("l'amour, toujours!")));
-    check (parseLyrics ("").empty() && parseLyrics ("123 !!").empty(), "texte vide");
+    // --- Harmonies : Do majeur, La3 chante (220 Hz, note 57)
+    check (diatonicShift (60, 0, Scale::major, 2) == 4, "tierce de Do = 4 demi-tons");
+    check (diatonicShift (62, 0, Scale::major, 2) == 3, "tierce de Re = 3 demi-tons");
+    check (diatonicShift (60, 0, Scale::major, -7) == -12, "octave basse");
+    check (diatonicShift (60, 9, Scale::minor, 2) == 4, "Do en La mineur");
 
-    auto engine = std::make_unique<ChoirEngine>();
-    engine->prepare (sr);
-    Params p;
-    p.reverbMix = 0.0f;
-    engine->setParams (p);
+    checkPitch ("unisson", 1, Harmony::unison, 220.0f);
+    checkPitch ("octave haute", 0, Harmony::octaves, 440.0f);
+    checkPitch ("octave basse", 3, Harmony::octaves, 110.0f);
+    checkPitch ("tierce au-dessus du La", 0, Harmony::chord, 261.63f);
 
-    // --- Chaque note avance d'une syllabe, un accord n'en consomme qu'une
-    engine->setLyrics (parseLyrics ("a-e-i"));
-    float dummyL[256], dummyR[256];
-    engine->noteOn (60, 0.8f); engine->noteOn (64, 0.8f); engine->noteOn (67, 0.8f);
-    check (engine->getLyricsPosition() == 1, "accord = une syllabe");
-    for (int i = 0; i < 20; ++i) engine->render (dummyL, dummyR, 256);
-    engine->noteOn (62, 0.8f);
-    check (engine->getLyricsPosition() == 2, "note suivante = syllabe suivante");
-    engine->allNotesOff();
-
-    // --- Hauteur : une seule section, sans vibrato ni desaccord
+    // --- La note est reconnue
     {
-        auto e = std::make_unique<ChoirEngine>();
-        e->prepare (sr);
-        Params q;
-        q.reverbMix = 0; q.sectionLevel = { 0, 0, 1, 0 }; q.singers = 1; q.ensemble = 0; q.vibratoDepth = 0; q.breath = 0; q.autoOctave = false;
-        e->setParams (q);
-        e->setLyrics (parseLyrics ("a"));
-        auto s = renderEvents (*e, { { 0, 57, true } }, 1.0, sr);
-        const float hz = detectPitch (s, 24000, 4096, (float) sr);
-        check (std::abs (hz - 220.0f) < 4.0f, "justesse La3", std::to_string (hz) + " Hz");
+        auto e = makeEngine (soloSection (1));
+        run (*e, makeVoice (220.0f, 0.5, false));
+        check (std::abs (e->getDetectedMidi() - 57.0f) < 0.3f, "note detectee", std::to_string (e->getDetectedMidi()));
     }
 
-    // --- Les voyelles sont bien differentes
+    // --- Le choeur suit les syllabes chantees : silence entre deux syllabes
     {
-        const auto vowelRatio = [&] (const char* text)
+        Params p;
+        p.reverbMix = 0;
+        p.dryLevel = 0;
+        auto e = makeEngine (p);
+        const auto out = run (*e, makeVoice (220.0f, 2.5, true));
+        const float during = rms (out, 48000 + 4800, 48000 + 12000);
+        const float between = rms (out, 48000 + 21000, 48000 + 23500);
+        check (during > 0.02f && between < during * 0.1f, "le choeur suit les syllabes", std::to_string (during) + " / " + std::to_string (between));
+    }
+
+    // --- Le silence reste silencieux, meme avec du souffle sous le seuil
+    {
+        Params p;
+        p.reverbMix = 0;
+        auto e = makeEngine (p);
+        std::vector<float> quiet (48000);
+        uint32_t seed = 1;
+        for (auto& x : quiet)
         {
-            auto e = std::make_unique<ChoirEngine>();
-            e->prepare (sr);
-            Params q;
-            q.reverbMix = 0; q.sectionLevel = { 0, 0, 1, 0 }; q.autoOctave = false; q.vibratoDepth = 0;
-            e->setParams (q);
-            e->setLyrics (parseLyrics (text));
-            auto s = renderEvents (*e, { { 0, 57, true } }, 1.0, sr);
-            return highRatio (s, 24000, 40000, (float) sr);
-        };
-        const float a = vowelRatio ("a"), ou = vowelRatio ("ou");
-        check (a > ou * 1.5f, "voyelles A et OU distinctes", std::to_string (a) + " / " + std::to_string (ou));
-    }
-
-    // --- Un S produit du souffle aigu avant la voyelle
-    {
-        auto e = std::make_unique<ChoirEngine>();
-        e->prepare (sr);
-        Params q;
-        q.reverbMix = 0; q.consonants = 1;
-        e->setParams (q);
-        e->setLyrics (parseLyrics ("sa"));
-        auto s = renderEvents (*e, { { 0, 57, true } }, 1.0, sr);
-        const float consonant = highRatio (s, 1500, 3500, (float) sr);
-        const float vowel = highRatio (s, 24000, 40000, (float) sr);
-        check (consonant > vowel * 1.5f && rms (s, 3000, 7000) > 0.002f, "consonne S audible", std::to_string (consonant) + " / " + std::to_string (vowel));
-    }
-
-    // --- Chant complet, niveau et retour au silence
-    {
-        auto e = std::make_unique<ChoirEngine>();
-        e->prepare (sr);
-        Params q;
-        e->setParams (q);
-        e->setLyrics (parseLyrics ("Glo-ri-a in ex-cel-sis De-o"));
-        const int melody[][4] = { { 60, 64, 67, 72 }, { 60, 65, 69, 72 }, { 62, 65, 67, 71 }, { 60, 64, 67, 72 },
-                                  { 59, 62, 67, 74 }, { 60, 64, 69, 72 }, { 60, 65, 69, 77 }, { 62, 65, 67, 71 }, { 60, 64, 67, 72 } };
-        std::vector<Event> ev;
-        double t = 0.1;
-        for (const auto& chord : melody)
-        {
-            for (int n : chord) ev.push_back ({ t, n, true });
-            for (int n : chord) ev.push_back ({ t + 0.62, n, false });
-            t += 0.68;
+            seed = seed * 1664525u + 1013904223u;
+            x = ((float) (seed >> 16) / 32768.0f - 1.0f) * 1.0e-4f;
         }
-        std::stable_sort (ev.begin(), ev.end(), [] (const Event& a, const Event& b) { return a.time < b.time; });
-        const auto s = renderEvents (*e, ev, t + 3.0, sr);
-        writeWav (outDir + "/gloria.wav", s, (int) sr);
-        const float level = rms (s, 96000, 400000);
-        check (allFinite (s), "aucun NaN");
-        check (level > 0.03f && level < 0.5f, "niveau du chant", "rms=" + std::to_string (level) + " crete=" + std::to_string (peak (s, 0, s.size())));
+        p.dryLevel = 0;
+        e->setParams (p);
+        const auto out = run (*e, quiet);
+        check (peak (out) < 1.0e-3f, "bruit de fond sous le seuil", std::to_string (peak (out)));
     }
 
+    // --- Consonne (bruit) : elle passe dans le choeur sans changer de hauteur
     {
-        auto e = std::make_unique<ChoirEngine>();
-        e->prepare (sr);
-        Params q;
-        q.reverbMix = 0;
-        e->setParams (q);
-        e->setLyrics (parseLyrics ("sal"));
-        auto s = renderEvents (*e, { { 0, 60, true }, { 0.5, 60, false } }, 6.0, sr);
-        check (peak (s, s.size() - 48000, s.size()) < 1.0e-3f, "silence apres relachement", std::to_string (peak (s, s.size() - 48000, s.size())));
+        Params p = soloSection (1);
+        auto e = makeEngine (p);
+        std::vector<float> noise (48000);
+        uint32_t seed = 7;
+        for (auto& x : noise)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            x = ((float) (seed >> 16) / 32768.0f - 1.0f) * 0.1f;
+        }
+        const auto out = run (*e, noise);
+        check (rms (out, 24000, 48000) > 0.01f, "les consonnes passent", std::to_string (rms (out, 24000, 48000)));
     }
 
-    // --- Vol de voix : 40 notes rapides, sans clic ni erreur
+    // --- Choeur complet : niveau, stabilite, fichier d'ecoute
     {
-        auto e = std::make_unique<ChoirEngine>();
-        e->prepare (sr);
-        Params q;
-        q.singers = 8;
-        e->setParams (q);
-        e->setLyrics (parseLyrics ("ka-ti-pou-so"));
-        std::vector<Event> ev;
-        for (int i = 0; i < 40; ++i)
-            ev.push_back ({ i * 0.05, 40 + i, true });
-        const auto s = renderEvents (*e, ev, 3.0, sr);
-        check (allFinite (s) && peak (s, 0, s.size()) <= 1.0f, "40 notes sans erreur");
+        Params p;
+        p.singers = 4;
+        p.dryLevel = 0.7f;
+        auto e = makeEngine (p);
+        std::vector<float> in;
+        for (float hz : { 196.0f, 220.0f, 261.63f, 293.66f, 329.63f })
+        {
+            const auto part = makeVoice (hz, 1.0, true);
+            in.insert (in.end(), part.begin(), part.end());
+        }
+        const auto out = run (*e, in);
+        writeWav (outDir + "/choeur.wav", out, (int) kSr);
+        check (allFinite (out), "aucun NaN");
+        check (peak (out) <= 1.0f && rms (out, 0, in.size()) > 0.02f, "niveau du choeur", "rms=" + std::to_string (rms (out, 0, in.size())) + " crete=" + std::to_string (peak (out)));
+    }
+
+    // --- Autres frequences d'echantillonnage
+    for (double rate : { 44100.0, 96000.0 })
+    {
+        auto e = std::make_unique<VoiceChoir>();
+        e->setParams (Params {});
+        e->prepare (rate);
+        const auto out = run (*e, makeVoice (220.0f, 1.0, false));
+        check (allFinite (out) && peak (out) <= 1.0f, "stable a " + std::to_string ((int) rate) + " Hz");
     }
 
     // --- Charge CPU au pire cas
     {
-        auto e = std::make_unique<ChoirEngine>();
-        e->prepare (sr);
-        Params q;
-        q.singers = 8;
-        e->setParams (q);
-        e->setLyrics (parseLyrics ("a"));
-        std::vector<Event> ev;
-        for (int i = 0; i < kMaxNotes; ++i)
-            ev.push_back ({ 0.0, 48 + i, true });
+        Params p;
+        p.singers = kMaxSingers;
+        auto e = makeEngine (p);
+        const auto in = makeVoice (110.0f, 5.0, false);
         const auto start = std::chrono::steady_clock::now();
-        const auto s = renderEvents (*e, ev, 5.0, sr);
+        run (*e, in);
         const double used = std::chrono::duration<double> (std::chrono::steady_clock::now() - start).count();
         check (used < 5.0, "temps reel au pire cas", std::to_string (used / 5.0 * 100.0) + " % d'un coeur");
     }

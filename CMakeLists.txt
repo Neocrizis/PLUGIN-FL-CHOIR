@@ -20,14 +20,16 @@ juce_add_plugin(Chorale
     COMPANY_NAME "Chorale Audio"
     BUNDLE_ID com.choraleaudio.chorale
     PLUGIN_MANUFACTURER_CODE Chau
-    PLUGIN_CODE Chrl
+    PLUGIN_CODE Chrv
     FORMATS VST3 AU Standalone
-    IS_SYNTH TRUE
-    NEEDS_MIDI_INPUT TRUE
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
-    VST3_CATEGORIES Instrument Synth
-    AU_MAIN_TYPE kAudioUnitType_MusicDevice
+    VST3_CATEGORIES Fx Pitch Shift
+    AU_MAIN_TYPE kAudioUnitType_Effect
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "Chorale a besoin du micro pour transformer ta voix en choeur."
     COPY_PLUGIN_AFTER_BUILD TRUE)
 
 target_sources(Chorale PRIVATE

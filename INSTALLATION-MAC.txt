@@ -1,5 +1,7 @@
 CHORALE - Installation sur Mac pour FL Studio
 
+Chorale est un effet : tu chantes dans ton micro et un choeur reprend tes mots et ta melodie.
+
 Attention : ce plugin n'est pas signe par un developpeur Apple. macOS le bloquera
 tant que l'etape 2 n'est pas faite. Ne la fais que si tu fais confiance a la
 personne qui t'a envoye ce fichier.
@@ -15,10 +17,8 @@ personne qui t'a envoye ce fichier.
 
 3. Ouvrir dans FL Studio
    Options > Manage plugins > Find installed plugins.
-   Ajoute Chorale au Channel Rack, tape les paroles, puis joue la melodie au piano roll.
-
-Chaque note chante la syllabe suivante. Ecris les paroles comme elles se prononcent,
-avec des tirets : A-men, Glo-ri-a, la vie est bel-le.
+   Choisis ton micro comme entree d'une piste du Mixer et mets Chorale sur cette piste.
+   Porte un casque : sans casque, le micro repique les enceintes et ca siffle.
 
 Si tu preferes le format AU, copie Chorale.component dans
 ~/Library/Audio/Plug-Ins/Components et lance la meme commande sur ce fichier.

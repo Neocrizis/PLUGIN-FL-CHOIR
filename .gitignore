@@ -2,4 +2,4 @@ build/
 build_test/
 render_test
 render_test.exe
-gloria.wav
+*.wav
