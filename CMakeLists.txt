@@ -26,7 +26,7 @@ juce_add_plugin(Chorale
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
-    VST3_CATEGORIES Fx Pitch Shift
+    VST3_CATEGORIES Fx
     AU_MAIN_TYPE kAudioUnitType_Effect
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "Chorale a besoin du micro pour transformer ta voix en choeur."

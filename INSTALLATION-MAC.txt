@@ -20,5 +20,12 @@ personne qui t'a envoye ce fichier.
    Choisis ton micro comme entree d'une piste du Mixer et mets Chorale sur cette piste.
    Porte un casque : sans casque, le micro repique les enceintes et ca siffle.
 
+Si FL Studio classe Chorale dans les generateurs :
+   Remplace d'abord l'ancien Chorale.vst3 par celui de ce paquet.
+   Dans Options > Manage plugins, selectionne Chorale, ouvre l'onglet Plugin,
+   choisis le type Effect et valide.
+   Si le type est grise, retire Chorale.vst3 du dossier VST3, relance la recherche,
+   remets le fichier, puis relance la recherche.
+
 Si tu preferes le format AU, copie Chorale.component dans
 ~/Library/Audio/Plug-Ins/Components et lance la meme commande sur ce fichier.
