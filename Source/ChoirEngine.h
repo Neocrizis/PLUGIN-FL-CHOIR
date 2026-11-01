@@ -944,7 +944,7 @@ private:
     }
 
     //==========================================================================
-    static constexpr float kMakeup = 3.0f;
+    static constexpr float kMakeup = 1.5f;
     static constexpr float kConsonantLevel = 0.5f;
 
     float sr = 48000.0f, controlDt = kControlBlock / 48000.0f;
