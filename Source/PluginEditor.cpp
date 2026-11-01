@@ -36,6 +36,7 @@ ChoraleEditor::ChoraleEditor (ChoraleProcessor& p)
     noteLabel.setFont (juce::FontOptions (16.0f));
     addAndMakeVisible (noteLabel);
 
+    addChoice ("style", "Style");
     addChoice ("harmony", "Harmonie");
     addChoice ("key", juce::String::fromUTF8 ("Tonalit\xC3\xA9"));
     addChoice ("scale", "Gamme");

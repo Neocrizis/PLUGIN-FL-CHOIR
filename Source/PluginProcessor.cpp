@@ -15,7 +15,9 @@ namespace
 
         Apvts::ParameterLayout layout;
         layout.add (std::make_unique<juce::AudioParameterChoice> (
-            juce::ParameterID { "harmony", 1 }, "Harmonie", juce::StringArray { "Unisson", "Octaves", "Accord" }, 2));
+            juce::ParameterID { "style", 1 }, "Style", juce::StringArray { "Gospel", "Enfants", "Shout" }, 0));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { "harmony", 1 }, "Harmonie", juce::StringArray { "Unisson", "Octaves", "Accord" }, 0));
         layout.add (std::make_unique<juce::AudioParameterChoice> (
             juce::ParameterID { "key", 1 }, juce::String::fromUTF8 ("Tonalit\xC3\xA9"),
             juce::StringArray { "Do", "Do#", "Re", "Mib", "Mi", "Fa", "Fa#", "Sol", "Lab", "La", "Sib", "Si" }, 0));
@@ -26,11 +28,11 @@ namespace
         addFloat (layout, "alto", "Alto", { 0.0f, 1.0f, 0.01f }, 0.8f);
         addFloat (layout, "tenor", juce::String::fromUTF8 ("T\xC3\xA9nor"), { 0.0f, 1.0f, 0.01f }, 0.8f);
         addFloat (layout, "bass", "Basse", { 0.0f, 1.0f, 0.01f }, 0.8f);
-        layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { "singers", 1 }, "Chanteurs", 1, choir::kMaxSingers, 4));
-        addFloat (layout, "ensemble", "Ensemble", { 0.0f, 1.0f, 0.01f }, 0.5f);
+        layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { "singers", 1 }, "Chanteurs", 1, choir::kMaxSingers, 5));
+        addFloat (layout, "ensemble", "Ensemble", { 0.0f, 1.0f, 0.01f }, 0.6f);
         addFloat (layout, "character", juce::String::fromUTF8 ("Caract\xC3\xA8re"), { 0.0f, 1.5f, 0.01f }, 1.0f);
         addFloat (layout, "choirLevel", "Choeur", { 0.0f, 1.0f, 0.01f }, 0.8f);
-        addFloat (layout, "dryLevel", "Voix", { 0.0f, 1.0f, 0.01f }, 0.7f);
+        addFloat (layout, "dryLevel", "Voix", { 0.0f, 1.0f, 0.01f }, 0.3f);
         addFloat (layout, "gate", "Seuil", { -70.0f, -20.0f, 0.1f }, -50.0f);
         addFloat (layout, "reverbMix", juce::String::fromUTF8 ("R\xC3\xA9verb\xC3\xA9ration"), { 0.0f, 1.0f, 0.01f }, 0.3f);
         addFloat (layout, "reverbSize", "Taille salle", { 0.0f, 1.0f, 0.01f }, 0.7f);
@@ -41,19 +43,19 @@ namespace
     struct Preset
     {
         const char* name;
-        int harmony;
+        int style, harmony;
         float soprano, alto, tenor, bass;
         int singers;
         float ensemble, character, choirLevel, dryLevel, reverbMix, reverbSize;
     };
 
     const Preset kPresets[] = {
-        { "Grand choeur", 2, 0.8f, 0.8f, 0.8f, 0.8f, 6, 0.5f, 1.0f, 0.9f, 0.5f, 0.35f, 0.7f },
-        { "Gospel", 2, 1.0f, 0.9f, 0.8f, 0.6f, 4, 0.6f, 1.0f, 0.9f, 0.8f, 0.2f, 0.45f },
-        { "Unisson large", 0, 0.8f, 0.8f, 0.8f, 0.8f, 8, 0.7f, 1.0f, 0.9f, 0.4f, 0.3f, 0.6f },
-        { "Octaves", 1, 0.8f, 0.5f, 0.5f, 0.8f, 5, 0.4f, 1.0f, 0.9f, 0.6f, 0.3f, 0.6f },
-        { "Petit ensemble", 2, 0.7f, 0.7f, 0.7f, 0.5f, 1, 0.3f, 1.0f, 0.8f, 0.8f, 0.15f, 0.35f },
-        { "Cathedrale", 2, 0.8f, 0.7f, 0.8f, 1.0f, 8, 0.45f, 1.0f, 0.8f, 0.2f, 0.6f, 0.95f },
+        { "Gospel", 0, 0, 0.8f, 0.8f, 0.8f, 0.8f, 5, 0.6f, 1.0f, 0.95f, 0.25f, 0.3f, 0.6f },
+        { "Enfants", 1, 0, 0.9f, 0.9f, 0.4f, 0.2f, 5, 0.5f, 1.0f, 0.9f, 0.2f, 0.3f, 0.55f },
+        { "Shout", 2, 0, 0.8f, 0.8f, 0.8f, 0.8f, 5, 0.75f, 0.8f, 1.0f, 0.2f, 0.18f, 0.4f },
+        { "Gospel octaves", 0, 1, 0.7f, 0.8f, 0.8f, 0.7f, 5, 0.6f, 1.0f, 0.9f, 0.25f, 0.3f, 0.6f },
+        { "Gospel accord", 0, 2, 0.8f, 0.8f, 0.7f, 0.5f, 5, 0.55f, 1.0f, 0.9f, 0.3f, 0.3f, 0.6f },
+        { "Cathedrale", 0, 0, 0.8f, 0.7f, 0.8f, 0.8f, 8, 0.5f, 1.0f, 0.8f, 0.15f, 0.6f, 0.95f },
     };
 }
 
@@ -84,6 +86,7 @@ choir::Params ChoraleProcessor::readParams() const
     const auto value = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
 
     choir::Params p;
+    p.style = (choir::Style) juce::roundToInt (value ("style"));
     p.harmony = (choir::Harmony) juce::roundToInt (value ("harmony"));
     p.key = juce::roundToInt (value ("key"));
     p.scale = (choir::Scale) juce::roundToInt (value ("scale"));
@@ -150,6 +153,7 @@ void ChoraleProcessor::setCurrentProgram (int index)
             parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
     };
 
+    set ("style", (float) preset.style);
     set ("harmony", (float) preset.harmony);
     set ("soprano", preset.soprano);
     set ("alto", preset.alto);

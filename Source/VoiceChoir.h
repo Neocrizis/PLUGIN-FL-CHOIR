@@ -20,18 +20,38 @@ constexpr int kNumMarks = 128;
 
 enum class Harmony { unison = 0, octaves = 1, chord = 2 };
 enum class Scale { major = 0, minor = 1, none = 2 };
+enum class Style { gospel = 0, kids = 1, shout = 2 };
+
+struct StyleSettings
+{
+    float spread;   // ampleur des ecarts entre chanteurs
+    float vibrato;  // profondeur en cents, pour Ensemble au maximum
+    float formant;  // decalage du timbre
+    float drive;    // saturation du choeur
+};
+
+inline const StyleSettings& styleSettings (Style style)
+{
+    static const StyleSettings settings[] = {
+        { 1.0f, 30.0f, 0.0f, 1.0f },
+        { 0.75f, 16.0f, 0.16f, 1.0f },
+        { 1.35f, 8.0f, 0.03f, 2.0f },
+    };
+    return settings[(size_t) style];
+}
 
 struct Params
 {
-    Harmony harmony = Harmony::chord;
+    Style style = Style::gospel;
+    Harmony harmony = Harmony::unison;
     int key = 0; // 0 = Do
     Scale scale = Scale::major;
     std::array<float, kNumSections> sectionLevel { 0.8f, 0.8f, 0.8f, 0.8f }; // S A T B
-    int singers = 4;
-    float ensemble = 0.5f;
+    int singers = 5;
+    float ensemble = 0.6f;
     float character = 1.0f; // ampleur des differences de timbre entre pupitres
     float choirLevel = 0.8f;
-    float dryLevel = 0.7f;
+    float dryLevel = 0.3f;
     float gateDb = -50.0f;
     float reverbMix = 0.3f;
     float reverbSize = 0.7f;
@@ -155,6 +175,10 @@ public:
         period = unvoicedPeriod;
         voiced = false;
         heldNote = -1;
+        noteStart = 0;
+        unvoicedRuns = 0;
+        rumbleL = rumbleR = 0.0f;
+        rumbleCoef = 1.0f - std::exp (-2.0f * kPi * 70.0f / sr);
         numMarks = 0;
         markHead = 0;
         nextMark = (int64_t) period;
@@ -216,6 +240,19 @@ public:
                 }
             }
 
+            // Retire le grondement que les voix graves ajoutent au choeur.
+            rumbleL += rumbleCoef * (wetL - rumbleL);
+            rumbleR += rumbleCoef * (wetR - rumbleR);
+            wetL -= rumbleL;
+            wetR -= rumbleR;
+
+            const float drive = styleSettings (params.style).drive;
+            if (drive > 1.0f)
+            {
+                wetL = std::tanh (wetL * drive) / drive;
+                wetR = std::tanh (wetR * drive) / drive;
+            }
+
             wetL *= params.choirLevel * gate;
             wetR *= params.choirLevel * gate;
 
@@ -242,9 +279,12 @@ private:
     struct Singer
     {
         std::array<Grain, kMaxGrains> grains;
-        float countdown = 0.0f, semitones = 0.0f;
-        float detuneNorm = 0.0f, scatterNorm = 0.0f, timbreNorm = 0.0f;
+        float countdown = 0.0f, semitones = 0.0f, spacing = 240.0f;
+        float detuneNorm = 0.0f, timbreNorm = 0.0f;
         float drift = 0.0f, driftTarget = 0.0f;
+        float scatter = 0.0f, scatterTarget = 0.0f;
+        float vibPhase = 0.0f, vibRate = 5.0f, vibDepth = 1.0f, glide = 0.1f;
+        float tone = 1.0f, toneState = 0.0f;
         float gainL = 0.7f, gainR = 0.7f;
     };
 
@@ -269,10 +309,17 @@ private:
             {
                 singer = Singer {};
                 singer.countdown = random01() * period;
+                singer.spacing = period;
                 singer.detuneNorm = randomBipolar();
-                singer.scatterNorm = random01();
                 singer.timbreNorm = randomBipolar();
                 singer.driftTarget = randomBipolar();
+                singer.scatter = random01();
+                singer.scatterTarget = random01();
+                singer.vibPhase = random01() * 2.0f * kPi;
+                singer.vibRate = 4.6f + 1.6f * random01();
+                singer.vibDepth = 0.5f + 0.5f * random01();
+                singer.glide = 0.08f + 0.12f * random01();
+                singer.tone = 1.0f - std::exp (-2.0f * kPi * (6000.0f + 4000.0f * random01()) / sr);
                 const float pan = std::clamp (sectionPan[s] + 0.7f * randomBipolar(), -1.0f, 1.0f);
                 const float angle = (pan + 1.0f) * 0.25f * kPi;
                 singer.gainL = std::cos (angle);
@@ -347,11 +394,14 @@ private:
             }
         }
 
+        // Une analyse ratee au milieu d'une note ne doit pas casser la voix.
         if (best < 0)
         {
-            setUnvoiced();
+            if (++unvoicedRuns >= 3)
+                setUnvoiced();
             return;
         }
+        unvoicedRuns = 0;
 
         const float a = cmnd[(size_t) (best - 1)], b = cmnd[(size_t) best], c = cmnd[(size_t) (best + 1)];
         const float denominator = a - 2.0f * b + c;
@@ -365,7 +415,10 @@ private:
 
         const float midi = 69.0f + 12.0f * std::log2 (hz / 440.0f);
         if (heldNote < 0 || std::abs (midi - (float) heldNote) > 0.6f)
+        {
             heldNote = (int) std::lround (midi);
+            noteStart = writePos;
+        }
         detectedMidi.store (midi);
     }
 
@@ -422,31 +475,67 @@ private:
     //==========================================================================
     void spawnGrain (Singer& singer, size_t section)
     {
-        static const float sectionTimbre[kNumSections] = { 1.15f, 1.05f, 0.97f, 0.88f };
+        static const float sectionTimbre[kNumSections] = { 1.12f, 1.04f, 0.97f, 0.9f };
 
-        int targetSemis = 0;
-        if (voiced && heldNote >= 0)
-            targetSemis = sectionShifts (heldNote, params)[section];
-        singer.semitones += 0.35f * ((float) targetSemis - singer.semitones);
+        const auto& style = styleSettings (params.style);
+        const float spread = params.ensemble * style.spread;
 
         singer.drift += 0.05f * (singer.driftTarget - singer.drift);
         if (random01() < 0.02f)
             singer.driftTarget = randomBipolar();
 
-        const float cents = voiced ? params.ensemble * (22.0f * singer.detuneNorm + 10.0f * singer.drift) : 0.0f;
-        const float ratio = voiced ? std::pow (2.0f, (singer.semitones + cents * 0.01f) / 12.0f) : 1.0f;
+        // L'ecart de temps de chaque chanteur bouge sans cesse : un ecart fixe sonne metallique.
+        singer.scatter += 0.01f * (singer.scatterTarget - singer.scatter);
+        if (random01() < 0.004f)
+            singer.scatterTarget = random01();
+        const float delay = baseDelay + spread * (0.004f + 0.05f * singer.scatter) * sr;
 
-        const float spacing = period / ratio;
-        singer.countdown += spacing;
+        if (! voiced)
+        {
+            spawnConsonantGrain (singer, delay);
+            return;
+        }
 
-        const float scatter = params.ensemble * singer.scatterNorm * 0.03f * sr;
+        if (heldNote >= 0)
+            singer.semitones += singer.glide * ((float) sectionShifts (heldNote, params)[section] - singer.semitones);
+
+        // Le vibrato arrive une fois la note installee, avec le rythme propre au chanteur.
+        singer.vibPhase = std::fmod (singer.vibPhase + 2.0f * kPi * singer.vibRate * singer.spacing / sr, 2.0f * kPi);
+        const float noteAge = (float) (writePos - noteStart) / sr;
+        const float vibrato = params.ensemble * style.vibrato * singer.vibDepth * std::sin (singer.vibPhase)
+                              * std::clamp ((noteAge - 0.2f) / 0.5f, 0.0f, 1.0f);
+
+        const float cents = spread * (22.0f * singer.detuneNorm + 12.0f * singer.drift) + vibrato;
+        const float ratio = std::pow (2.0f, (singer.semitones + cents * 0.01f) / 12.0f);
+
+        singer.spacing = (period / ratio) * (1.0f + 0.02f * spread * randomBipolar());
+        singer.countdown += singer.spacing;
+
         int64_t centre = 0;
-        if (gate < 0.001f || ! findMark (writePos - (int64_t) (baseDelay + scatter), centre))
+        const float jitter = spread * random01() * period;
+        if (gate < 0.001f || ! findMark (writePos - (int64_t) (delay + jitter), centre))
             return;
 
-        const float length = 2.0f * period;
-        const float timbre = 1.0f + params.character * (sectionTimbre[section] - 1.0f + 0.03f * singer.timbreNorm);
-        if ((double) centre - (double) length * timbre < 0.0)
+        const float timbre = std::max (0.6f, 1.0f + style.formant + params.character
+                                                 * (sectionTimbre[section] - 1.0f + 0.06f * singer.timbreNorm + 0.01f * singer.drift));
+        const float amp = (1.0f + 0.2f * spread * singer.drift + 0.12f * spread * randomBipolar()) / std::max (ratio, 0.5f);
+        startGrain (singer, (double) centre, 2.0f * period, timbre, amp);
+    }
+
+    // Consonnes : fragments pris au hasard, pour un souffle naturel plutot qu'un bourdonnement.
+    void spawnConsonantGrain (Singer& singer, float delay)
+    {
+        const float length = 0.025f * sr * (0.7f + 0.6f * random01());
+        singer.spacing = 0.4f * length;
+        singer.countdown += singer.spacing;
+
+        if (gate >= 0.001f)
+            startGrain (singer, (double) writePos - (double) delay - 0.01 * (double) (sr * random01()), length, 1.0f, 0.8f);
+    }
+
+    void startGrain (Singer& singer, double centre, float length, float inc, float amp)
+    {
+        if (centre - (double) length * inc < 0.0)
             return;
 
         for (auto& grain : singer.grains)
@@ -454,11 +543,11 @@ private:
             if (! grain.active)
             {
                 grain.active = true;
-                grain.centre = (double) centre;
+                grain.centre = centre;
                 grain.index = 0.0f;
                 grain.length = length;
-                grain.inc = timbre;
-                grain.amp = 1.0f / std::max (ratio, 0.5f);
+                grain.inc = inc;
+                grain.amp = amp;
                 return;
             }
         }
@@ -496,7 +585,8 @@ private:
             if (grain.index >= grain.length)
                 grain.active = false;
         }
-        return out * level;
+        singer.toneState += singer.tone * (out - singer.toneState);
+        return singer.toneState * level;
     }
 
     //==========================================================================
@@ -512,7 +602,9 @@ private:
 
     float baseDelay = 960.0f, unvoicedPeriod = 240.0f, period = 240.0f;
     bool voiced = false;
-    int heldNote = -1;
+    int heldNote = -1, unvoicedRuns = 0;
+    int64_t noteStart = 0;
+    float rumbleL = 0.0f, rumbleR = 0.0f, rumbleCoef = 0.01f;
     std::atomic<float> detectedMidi { -1.0f };
 
     float envelope = 0.0f, gate = 0.0f, attackCoef = 0.1f, releaseCoef = 0.01f;

@@ -223,6 +223,59 @@ int main (int argc, char** argv)
         check (rms (out, 24000, 48000) > 0.01f, "les consonnes passent", std::to_string (rms (out, 24000, 48000)));
     }
 
+    // --- Consonne : plus de bourdonnement regulier cree par les fragments
+    {
+        Params p = soloSection (1);
+        p.singers = 5;
+        p.ensemble = 0.6f;
+        auto e = makeEngine (p);
+        std::vector<float> noise (48000);
+        uint32_t seed = 11;
+        for (auto& x : noise)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            x = ((float) (seed >> 16) / 32768.0f - 1.0f) * 0.1f;
+        }
+        const auto out = run (*e, noise);
+        double same = 0, energy = 0;
+        for (size_t i = 24000; i < 47000; ++i)
+        {
+            same += out[i * 2] * out[(i + 240) * 2];
+            energy += out[i * 2] * out[i * 2];
+        }
+        const double periodicity = energy > 0 ? same / energy : 1.0;
+        check (std::abs (periodicity) < 0.3, "consonnes sans bourdonnement", std::to_string (periodicity));
+    }
+
+    // --- Les chanteurs doivent differer : gauche et droite ne sont pas une copie
+    {
+        Params p;
+        p.dryLevel = 0;
+        p.reverbMix = 0;
+        auto e = makeEngine (p);
+        const auto out = run (*e, makeVoice (220.0f, 3.0, false));
+        double lr = 0, ll = 0, rr = 0;
+        for (size_t i = 48000; i < 144000; ++i)
+        {
+            lr += out[i * 2] * out[i * 2 + 1];
+            ll += out[i * 2] * out[i * 2];
+            rr += out[i * 2 + 1] * out[i * 2 + 1];
+        }
+        const double correlation = lr / std::sqrt (std::max (ll * rr, 1.0e-12));
+        check (correlation < 0.8, "chanteurs decorreles", std::to_string (correlation));
+    }
+
+    // --- Styles : stabilite et niveau
+    for (Style style : { Style::gospel, Style::kids, Style::shout })
+    {
+        Params p;
+        p.style = style;
+        auto e = makeEngine (p);
+        const auto out = run (*e, makeVoice (220.0f, 1.5, true));
+        check (allFinite (out) && peak (out) <= 1.0f && rms (out, 0, 72000) > 0.01f,
+               "style " + std::to_string ((int) style), "rms=" + std::to_string (rms (out, 0, 72000)));
+    }
+
     // --- Choeur complet : niveau, stabilite, fichier d'ecoute
     {
         Params p;

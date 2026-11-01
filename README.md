@@ -2,7 +2,7 @@
 
 Effet de chœur en direct pour FL Studio sur Mac (VST3, AU et application autonome). Le chanteur chante dans son micro, et Chorale reprend ses mots et sa mélodie avec jusqu'à 32 voix réparties en quatre pupitres : soprano, alto, ténor et basse.
 
-Il n'y a rien à taper et aucune IA : le chœur est fabriqué en temps réel à partir de la voix reçue, et rien ne quitte l'ordinateur. Le chœur arrive environ 20 ms après la voix, et jusqu'à 30 ms de plus selon le réglage Ensemble.
+Il n'y a rien à taper et aucune IA : le chœur est fabriqué en temps réel à partir de la voix reçue, et rien ne quitte l'ordinateur. Le chœur arrive environ 20 ms après la voix, et jusqu'à 90 ms selon le style et le réglage Ensemble.
 
 ## Compilation
 
