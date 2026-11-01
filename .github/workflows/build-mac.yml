@@ -16,7 +16,12 @@ jobs:
         continue-on-error: true
         run: |
           clang++ -std=c++17 -O2 tests/render_test.cpp -o render_test
-          ./render_test .
+          status=0
+          ./render_test . > test.txt || status=$?
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then echo "::notice title=Test::$line"; fi
+          done < test.txt
+          exit $status
 
       - name: Compiler
         run: |
