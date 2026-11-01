@@ -1,0 +1,24 @@
+CHORALE - Installation sur Mac pour FL Studio
+
+Attention : ce plugin n'est pas signe par un developpeur Apple. macOS le bloquera
+tant que l'etape 2 n'est pas faite. Ne la fais que si tu fais confiance a la
+personne qui t'a envoye ce fichier.
+
+1. Copier le plugin
+   Dans le Finder, menu Aller > Aller au dossier, puis colle :
+   ~/Library/Audio/Plug-Ins/VST3
+   Copies-y Chorale.vst3.
+
+2. Debloquer le plugin
+   Ouvre l'application Terminal, puis colle cette commande et appuie sur Entree :
+   xattr -cr ~/Library/Audio/Plug-Ins/VST3/Chorale.vst3
+
+3. Ouvrir dans FL Studio
+   Options > Manage plugins > Find installed plugins.
+   Ajoute Chorale au Channel Rack, tape les paroles, puis joue la melodie au piano roll.
+
+Chaque note chante la syllabe suivante. Ecris les paroles comme elles se prononcent,
+avec des tirets : A-men, Glo-ri-a, la vie est bel-le.
+
+Si tu preferes le format AU, copie Chorale.component dans
+~/Library/Audio/Plug-Ins/Components et lance la meme commande sur ce fichier.

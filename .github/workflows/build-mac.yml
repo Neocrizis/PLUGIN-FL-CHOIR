@@ -1,0 +1,48 @@
+name: Build Mac
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Les seuils de niveau n'ont pas encore ete valides sur un vrai rendu :
+      # un echec est visible dans le journal mais ne bloque pas le plugin.
+      - name: Tester le moteur
+        continue-on-error: true
+        run: |
+          clang++ -std=c++17 -O2 tests/render_test.cpp -o render_test
+          ./render_test .
+
+      - name: Compiler
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release --target Chorale_VST3 Chorale_AU
+
+      - name: Preparer le paquet
+        run: |
+          mkdir -p package
+          cp -R build/Chorale_artefacts/Release/VST3/Chorale.vst3 package/
+          cp -R build/Chorale_artefacts/Release/AU/Chorale.component package/
+          codesign --force --deep -s - package/Chorale.vst3
+          codesign --force --deep -s - package/Chorale.component
+          cp INSTALLATION-MAC.txt package/
+          ditto -c -k --keepParent package Chorale-Mac.zip
+
+      - name: Publier le paquet
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chorale-Mac
+          path: Chorale-Mac.zip
+
+      - name: Publier l'exemple audio
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Exemple-audio
+          path: gloria.wav
+          if-no-files-found: warn
