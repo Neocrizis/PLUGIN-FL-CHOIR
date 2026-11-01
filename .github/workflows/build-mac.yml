@@ -18,9 +18,10 @@ jobs:
           clang++ -std=c++17 -O2 tests/render_test.cpp -o render_test
           status=0
           ./render_test . > test.txt || status=$?
-          while IFS= read -r line; do
-            if [ -n "$line" ]; then echo "::notice title=Test::$line"; fi
-          done < test.txt
+          # GitHub limite les annotations a 10 par etape : on garde les dernieres lignes.
+          grep -v '^$' test.txt | tail -n 10 | while IFS= read -r line; do
+            echo "::notice title=Test::$line"
+          done
           exit $status
 
       - name: Compiler
