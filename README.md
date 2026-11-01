@@ -6,7 +6,7 @@ Il n'y a rien à taper et aucune IA : le chœur est fabriqué en temps réel à 
 
 ## Compilation
 
-GitHub Actions compile le plugin à chaque envoi, sur un Mac dans le cloud. Le paquet `Chorale-Mac` se télécharge sur la page de la compilation, avec `Exemple-audio`, un rendu produit à partir d'une voix de synthèse.
+GitHub Actions compile le plugin à chaque envoi, sur un Mac dans le cloud. Le paquet se télécharge ici : [Ensemble.zip](https://github.com/Neocrizis/PLUGIN-FL-CHOIR/releases/download/latest/Ensemble.zip). `Exemple-audio`, un rendu produit à partir d'une voix de synthèse, se trouve sur la page de la compilation.
 
 Pour compiler sur un Mac avec Xcode et CMake :
 

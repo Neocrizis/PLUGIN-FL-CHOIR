@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -37,13 +40,16 @@ jobs:
           codesign --force --deep -s - package/Chorale.vst3
           codesign --force --deep -s - package/Chorale.component
           cp INSTALLATION-MAC.txt package/
-          ditto -c -k --keepParent package Chorale-Mac.zip
+          mv package Ensemble
+          ditto -c -k --keepParent Ensemble Ensemble.zip
 
+      # Lien direct et stable, sans compte GitHub.
       - name: Publier le paquet
-        uses: actions/upload-artifact@v4
-        with:
-          name: Chorale-Mac
-          path: Chorale-Mac.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view latest > /dev/null 2>&1 || gh release create latest --title "Chorale - version de test" --notes "Version de test pour Mac." --prerelease
+          gh release upload latest Ensemble.zip --clobber
 
       - name: Publier l'exemple audio
         if: always()
